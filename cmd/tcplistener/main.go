@@ -1,12 +1,10 @@
 package main
 
 import (
-	"errors"
-	"fmt"
-	"io"
 	"log"
 	"net"
-	"strings"
+
+	"github.com/esh4d0w/bootdev-HttpFromTcp/internal/request"
 )
 
 const inputFilePath = "messages.txt"
@@ -24,43 +22,14 @@ func main() {
 			log.Printf("Connection couldn't be established: %v\n", err)
 		}
 		log.Printf("Connection opened\n")
-		linesChannel := getLinesChannel(connection)
-		for line := range linesChannel {
-			log.Printf("%s\n", line)
+		req, err := request.RequestFromReader(connection)
+		if err != nil {
+			log.Fatalf("Error Getting From Header: %v", err)
 		}
+
+		log.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s\n", req.RequestLine.Method, req.RequestLine.RequestTarget, req.RequestLine.HttpVersion)
+
 		log.Printf("Connection closed\n")
 	}
 
-}
-
-func getLinesChannel(f io.ReadCloser) <-chan string {
-	lines := make(chan string)
-	go func() {
-		defer f.Close()
-		defer close(lines)
-		currentLine := ""
-		for {
-			buffer := make([]byte, 8)
-			n, err := f.Read(buffer)
-			if err != nil {
-				if currentLine != "" {
-					lines <- currentLine
-					currentLine = ""
-				}
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				log.Printf("error read: %s\n", err)
-				break
-			}
-			currentStr := string(buffer[:n])
-			parts := strings.Split(currentStr, "\n")
-			for i := 0; i < len(parts)-1; i++ {
-				lines <- fmt.Sprintf("%s%s", currentLine, parts[i])
-				currentLine = ""
-			}
-			currentLine += parts[len(parts)-1]
-		}
-	}()
-	return lines
 }
