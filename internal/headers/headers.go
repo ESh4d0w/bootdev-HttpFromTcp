@@ -34,9 +34,18 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 
 	value := bytes.TrimSpace(parts[1])
-	h[key] = string(value)
+	h.Set(key, string(value))
 
 	return i + 2, false, nil
+}
+
+func (h Headers) Set(key, value string) {
+	elem, ok := h[key]
+	if !ok {
+		h[key] = value
+		return
+	}
+	h[key] = elem + ", " + value
 }
 
 func validateAndTrimKey(key string) (string, error) {
