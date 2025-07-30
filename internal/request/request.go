@@ -6,18 +6,22 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/esh4d0w/bootdev-HttpFromTcp/internal/headers"
 )
 
-type parserState int
+type requestState int
 
 const (
-	parserStateDone        parserState = iota // 0
-	parserStateInitialized                    // 1
+	requestStateDone           requestState = iota // 0
+	requestStateInitialized                        // 1
+	requestStateParsingHeaders                     // 2
 )
 
 type Request struct {
 	RequestLine RequestLine
-	State       parserState
+	Headers     headers.Headers
+	State       requestState
 }
 
 type RequestLine struct {
@@ -33,10 +37,11 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	buffer := make([]byte, bufferSize)
 	readToIndex := 0
 	req := &Request{
-		State: parserStateInitialized,
+		State:   requestStateInitialized,
+		Headers: headers.NewHeaders(),
 	}
 
-	for req.State != parserStateDone {
+	for req.State != requestStateDone {
 		if readToIndex >= len(buffer) {
 			newBuffer := make([]byte, cap(buffer)*2)
 			_ = copy(newBuffer, buffer)
@@ -45,7 +50,9 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		nRead, err := reader.Read(buffer[readToIndex:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				req.State = parserStateDone
+				if req.State != requestStateDone {
+					return nil, fmt.Errorf("incomplete request, in state: %d, read n bytes on EOF: %d", req.State, nRead)
+				}
 				break
 			}
 			return nil, err
@@ -118,22 +125,44 @@ func verifyRequestLine(reqLine string) (*RequestLine, error) {
 }
 
 func (r *Request) parse(data []byte) (int, error) {
-	switch r.State {
-	case parserStateInitialized:
-		req, read, err := parseRequestLine(data)
+	totalBytesParsed := 0
+	for r.State != requestStateDone {
+		n, err := r.parseSingle(data[totalBytesParsed:])
 		if err != nil {
-			return read, fmt.Errorf("Error parsing: %s", err)
+			return 0, err
 		}
+		totalBytesParsed += n
+		if n == 0 {
+			break
+		}
+	}
+	return totalBytesParsed, nil
+}
 
-		if read == 0 {
+func (r *Request) parseSingle(data []byte) (int, error) {
+	switch r.State {
+	case requestStateParsingHeaders:
+		n, done, err := r.Headers.Parse(data)
+		if err != nil {
+			return 0, fmt.Errorf("Error parsing Header: %s", err)
+		}
+		if done {
+			r.State = requestStateDone
+		}
+		return n, nil
+	case requestStateInitialized:
+		req, n, err := parseRequestLine(data)
+		if err != nil {
+			return n, fmt.Errorf("Error parsing Request Line: %s", err)
+		}
+		if n == 0 {
 			return 0, nil
 		}
-
 		r.RequestLine = *req
-		r.State = parserStateDone
-		return read, nil
-	case parserStateDone:
-		return 0, fmt.Errorf("Trying to read data in parserStateDone state")
+		r.State = requestStateParsingHeaders
+		return n, nil
+	case requestStateDone:
+		return 0, fmt.Errorf("Trying to read data in requestStateDone state")
 	default:
 		return 0, fmt.Errorf("Invalid ParseState: %d", r.State)
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 
@@ -28,6 +29,12 @@ func main() {
 		}
 
 		log.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s\n", req.RequestLine.Method, req.RequestLine.RequestTarget, req.RequestLine.HttpVersion)
+
+		headers := ""
+		for key, value := range req.Headers {
+			headers += fmt.Sprintf("- %s: %s\n", key, value)
+		}
+		log.Printf("Headers:\n%s", headers)
 
 		log.Printf("Connection closed\n")
 	}
