@@ -48,6 +48,11 @@ func (h Headers) Set(key, value string) {
 	h[key] = elem + ", " + value
 }
 
+func (h Headers) Get(key string) (string, bool) {
+	elem, ok := h[strings.ToLower(key)]
+	return elem, ok
+}
+
 func validateAndTrimKey(key string) (string, error) {
 	if key != strings.TrimRight(key, " ") {
 		return "", fmt.Errorf("Space between key and : %s", key)

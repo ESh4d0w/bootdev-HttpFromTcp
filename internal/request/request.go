@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/esh4d0w/bootdev-HttpFromTcp/internal/headers"
@@ -16,12 +17,15 @@ const (
 	requestStateDone           requestState = iota // 0
 	requestStateInitialized                        // 1
 	requestStateParsingHeaders                     // 2
+	requestStateParsingBody                        // 3
 )
 
 type Request struct {
-	RequestLine RequestLine
-	Headers     headers.Headers
-	State       requestState
+	RequestLine    RequestLine
+	Headers        headers.Headers
+	Body           []byte
+	BodyLengthRead int
+	State          requestState
 }
 
 type RequestLine struct {
@@ -39,6 +43,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	req := &Request{
 		State:   requestStateInitialized,
 		Headers: headers.NewHeaders(),
+		Body:    make([]byte, 0),
 	}
 
 	for req.State != requestStateDone {
@@ -141,13 +146,33 @@ func (r *Request) parse(data []byte) (int, error) {
 
 func (r *Request) parseSingle(data []byte) (int, error) {
 	switch r.State {
+	case requestStateParsingBody:
+		contentLenString, ok := r.Headers.Get("Content-Length")
+		if !ok {
+			// Ignore if no content-length
+			r.State = requestStateDone
+			return len(data), nil
+		}
+		contentLen, err := strconv.Atoi(contentLenString)
+		if err != nil {
+			return 0, fmt.Errorf("Malformed Content-Length: %s", err)
+		}
+		r.Body = append(r.Body, data...)
+		r.BodyLengthRead += len(data)
+		if r.BodyLengthRead > contentLen {
+			return 0, fmt.Errorf("Body longer than Content-Length")
+		}
+		if r.BodyLengthRead == contentLen {
+			r.State = requestStateDone
+		}
+		return len(data), nil
 	case requestStateParsingHeaders:
 		n, done, err := r.Headers.Parse(data)
 		if err != nil {
 			return 0, fmt.Errorf("Error parsing Header: %s", err)
 		}
 		if done {
-			r.State = requestStateDone
+			r.State = requestStateParsingBody
 		}
 		return n, nil
 	case requestStateInitialized:
