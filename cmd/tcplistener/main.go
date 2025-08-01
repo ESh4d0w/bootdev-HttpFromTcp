@@ -36,6 +36,8 @@ func main() {
 		}
 		log.Printf("Headers:\n%s", headers)
 
+		log.Printf("Body: \n%s", req.Body)
+
 		log.Printf("Connection closed\n")
 	}
 
