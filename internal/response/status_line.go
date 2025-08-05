@@ -2,10 +2,7 @@ package response
 
 import (
 	"fmt"
-	"io"
 )
-
-const crlf = "\r\n"
 
 type StatusCode int
 
@@ -15,7 +12,7 @@ const (
 	StatusInternalServerError StatusCode = 500
 )
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+func getStatusLine(statusCode StatusCode) []byte {
 	reason := ""
 	switch statusCode {
 	case StatusOK:
@@ -26,11 +23,5 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 		reason = "InternalServerError"
 	}
 
-	line := fmt.Sprintf("HTTP/1.1 %d %s%s", statusCode, reason, crlf)
-
-	_, err := w.Write([]byte(line))
-	if err != nil {
-		return err
-	}
-	return nil
+	return []byte(fmt.Sprintf("HTTP/1.1 %d %s%s", statusCode, reason, crlf))
 }
