@@ -57,6 +57,11 @@ func (h Headers) Get(key string) (string, bool) {
 	return elem, ok
 }
 
+func (h Headers) Remove(key string) {
+	key = strings.ToLower(key)
+	delete(h, key)
+}
+
 func validateAndTrimKey(key string) (string, error) {
 	if key != strings.TrimRight(key, " ") {
 		return "", fmt.Errorf("Space between key and : %s", key)
