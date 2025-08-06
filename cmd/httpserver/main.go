@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -9,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/esh4d0w/bootdev-HttpFromTcp/internal/headers"
 	"github.com/esh4d0w/bootdev-HttpFromTcp/internal/request"
 	"github.com/esh4d0w/bootdev-HttpFromTcp/internal/response"
 	"github.com/esh4d0w/bootdev-HttpFromTcp/internal/server"
@@ -33,6 +36,10 @@ func main() {
 func handler(w *response.Writer, req *request.Request) {
 	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin") {
 		handlerProxy(w, req)
+		return
+	}
+	if req.RequestLine.RequestTarget == "/video" {
+		handlerVideo(w, req)
 		return
 	}
 	if req.RequestLine.RequestTarget == "/yourproblem" {
@@ -107,13 +114,15 @@ func handlerProxy(w *response.Writer, req *request.Request) {
 	defer resp.Body.Close()
 
 	w.WriteStatusLine(response.StatusOK)
-	headers := response.GetDefaultHeaders(0)
-	headers.Remove("Content-Length")
-	headers.Overwrite("Transfer-Encoding", "chunked")
-	w.WriteHeaders(headers)
+	h := response.GetDefaultHeaders(0)
+	h.Overwrite("Transfer-Encoding", "chunked")
+	h.Overwrite("Trailer", "X-Content-SHA256, X-Content-Length")
+	h.Remove("Content-Length")
+	w.WriteHeaders(h)
 
 	const maxBufferSize = 1024
 	buffer := make([]byte, maxBufferSize)
+	totalBody := make([]byte, 0)
 	for {
 		n, err := resp.Body.Read(buffer)
 		if n > 0 {
@@ -121,6 +130,7 @@ func handlerProxy(w *response.Writer, req *request.Request) {
 			if err != nil {
 				log.Printf("Error writing ChunkedBody: %v", err)
 			}
+			totalBody = append(totalBody, buffer[:n]...)
 		}
 		if err == io.EOF {
 			break
@@ -135,4 +145,27 @@ func handlerProxy(w *response.Writer, req *request.Request) {
 	if err != nil {
 		log.Printf("Error writing ChunkedBodyDone: %v", err)
 	}
+
+	trailers := headers.NewHeaders()
+	sha := fmt.Sprintf("%x", sha256.Sum256(totalBody))
+	trailers.Overwrite("X-Content-SHA256", sha)
+	trailers.Overwrite("X-Content-Length", fmt.Sprintf("%d", len(totalBody)))
+	err = w.WriteTrailers(trailers)
+	if err != nil {
+		log.Printf("Error writing Trailers")
+	}
+}
+
+func handlerVideo(w *response.Writer, req *request.Request) {
+
+	body, err := os.ReadFile("assets/vim.mp4")
+	if err != nil {
+		handler500(w, req)
+	}
+
+	w.WriteStatusLine(response.StatusOK)
+	headers := response.GetDefaultHeaders(len(body))
+	headers.Overwrite("Content-Type", "video/mp4")
+	w.WriteHeaders(headers)
+	w.WriteBody(body)
 }

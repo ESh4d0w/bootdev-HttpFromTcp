@@ -15,6 +15,7 @@ const (
 	writerStateStatusLine writerState = iota
 	writerStateHeaders
 	writerStateBody
+	writerStateTrailers
 )
 
 type Writer struct {
@@ -55,10 +56,26 @@ func (w *Writer) WriteHeaders(headers headers.Headers) error {
 	return err
 }
 
+func (w *Writer) WriteTrailers(trailers headers.Headers) error {
+	if w.state != writerStateTrailers {
+		return fmt.Errorf("cannot write Trailers in state: %d", w.state)
+	}
+	for k, v := range trailers {
+		trailer := fmt.Sprintf("%s: %s%s", k, v, crlf)
+		_, err := w.writer.Write([]byte(trailer))
+		if err != nil {
+			return err
+		}
+	}
+	_, err := w.writer.Write([]byte(crlf))
+	return err
+}
+
 func (w *Writer) WriteBody(p []byte) (int, error) {
 	if w.state != writerStateBody {
 		return 0, fmt.Errorf("cannot write Body in state :%d", w.state)
 	}
+	defer func() { w.state = writerStateTrailers }()
 	return w.writer.Write(p)
 }
 
@@ -94,7 +111,8 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 	if w.state != writerStateBody {
 		return 0, fmt.Errorf("cannot write Body in state :%d", w.state)
 	}
-	n, err := fmt.Fprintf(w.writer, "0%s%s", crlf, crlf)
+	defer func() { w.state = writerStateTrailers }()
+	n, err := fmt.Fprintf(w.writer, "0%s", crlf)
 	if err != nil {
 		return n, err
 	}
